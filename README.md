@@ -182,4 +182,6 @@ MIT License - see [LICENSE](LICENSE)
 
 ---
 
-**GitHub:** [@schundu007](https://github.com/schundu007) | **LinkedIn:** [Sudhakar Chundu](https://linkedin.com/in/sudhakar-chundu)
+**GitHub:** [@schundu007](https://github.com/schundu007) | 
+**LinkedIn:** [Sudhakar Chundu](https://www.linkedin.com/in/sudhakar-chundu) |
+**Gist:** [@schundu007](https://gist.github.com/schundu007) | 
