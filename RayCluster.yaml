@@ -1,0 +1,358 @@
+---
+# RayCluster Manifest - KubeRay Operator v1
+# Docs: https://docs.ray.io/en/latest/cluster/kubernetes/index.html
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: ray-test
+  namespace: test
+  labels:
+    app.kubernetes.io/name: ray-cluster
+    app.kubernetes.io/instance: ray-test
+    app.kubernetes.io/component: ray
+  annotations:
+    ray.io/ft-enabled: "false"  # Enable for fault tolerance
+spec:
+  rayVersion: "2.9.3"  # Update to match your image
+  enableInTreeAutoscaling: true
+
+  autoscalerOptions:
+    upscalingMode: Default  # Default, Aggressive, Conservative
+    idleTimeoutSeconds: 900  # 15 minutes
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+
+  #---------------------------------------------------------------------------
+  # Head Node Configuration
+  #---------------------------------------------------------------------------
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      block: "true"
+      num-cpus: "0"  # Don't schedule workloads on head
+    serviceType: ClusterIP  # or LoadBalancer for external access
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: ray-cluster
+          app.kubernetes.io/component: head
+          ray.io/node-type: head
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+      spec:
+        serviceAccountName: ray-cluster-sa  # Create this ServiceAccount
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+        nodeSelector:
+          node: ray-type-ondemand
+        tolerations:
+          - key: node
+            operator: Equal
+            value: ray-type-ondemand
+            effect: NoSchedule
+        containers:
+          - name: ray-head
+            image: rayproject/ray:2.9.3-py310  # Use specific tag, not latest
+            imagePullPolicy: IfNotPresent
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
+              capabilities:
+                drop: ["ALL"]
+            env:
+              - name: RAY_GRAFANA_HOST
+                value: "http://grafana:3000"
+              - name: RAY_PROMETHEUS_HOST
+                value: "http://prometheus:9090"
+              # Add your env vars via ConfigMap/Secret
+              - name: ENV1
+                valueFrom:
+                  configMapKeyRef:
+                    name: ray-config
+                    key: env1
+                    optional: true
+            envFrom:
+              - secretRef:
+                  name: ray-secrets
+                  optional: true
+            ports:
+              - name: gcs
+                containerPort: 6379
+                protocol: TCP
+              - name: client
+                containerPort: 10001
+                protocol: TCP
+              - name: dashboard
+                containerPort: 8265
+                protocol: TCP
+              - name: serve
+                containerPort: 8000
+                protocol: TCP
+              - name: metrics
+                containerPort: 8080
+                protocol: TCP
+            resources:
+              limits:
+                cpu: "4"
+                memory: "16Gi"
+              requests:
+                cpu: "2"
+                memory: "8Gi"
+            lifecycle:
+              preStop:
+                exec:
+                  command: ["/bin/sh", "-c", "ray stop"]
+            livenessProbe:
+              httpGet:
+                path: /
+                port: dashboard
+              initialDelaySeconds: 30
+              periodSeconds: 10
+              failureThreshold: 3
+            readinessProbe:
+              httpGet:
+                path: /
+                port: dashboard
+              initialDelaySeconds: 10
+              periodSeconds: 5
+              failureThreshold: 3
+            volumeMounts:
+              - name: dshm
+                mountPath: /dev/shm
+              - name: ray-logs
+                mountPath: /tmp/ray
+        volumes:
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 8Gi
+          - name: ray-logs
+            emptyDir: {}
+
+  #---------------------------------------------------------------------------
+  # Worker Node Configuration
+  #---------------------------------------------------------------------------
+  workerGroupSpecs:
+    - groupName: default-worker
+      replicas: 1
+      minReplicas: 0
+      maxReplicas: 50
+      rayStartParams:
+        block: "true"
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ray-cluster
+            app.kubernetes.io/component: worker
+            ray.io/node-type: worker
+        spec:
+          serviceAccountName: ray-cluster-sa
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          nodeSelector:
+            node: ray-type-worker1
+          tolerations:
+            - key: node
+              operator: Equal
+              value: ray-type-worker1
+              effect: NoSchedule
+          initContainers:
+            # Use init container for setup instead of start commands
+            - name: init-setup
+              image: rayproject/ray:2.9.3-py310
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  echo "Running initialization..."
+                  # Add any pip installs or setup here if needed
+                  # pip install --user some-package
+              volumeMounts:
+                - name: dshm
+                  mountPath: /dev/shm
+          containers:
+            - name: ray-worker
+              image: rayproject/ray:2.9.3-py310
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: RAY_DISABLE_MEMORY_MONITOR
+                  value: "1"
+              envFrom:
+                - configMapRef:
+                    name: ray-config
+                    optional: true
+                - secretRef:
+                    name: ray-secrets
+                    optional: true
+              ports:
+                - name: client
+                  containerPort: 10001
+                  protocol: TCP
+                - name: metrics
+                  containerPort: 8080
+                  protocol: TCP
+              resources:
+                limits:
+                  cpu: "8"
+                  memory: "32Gi"
+                requests:
+                  cpu: "4"
+                  memory: "16Gi"
+              lifecycle:
+                preStop:
+                  exec:
+                    command: ["/bin/sh", "-c", "ray stop"]
+              livenessProbe:
+                exec:
+                  command: ["ray", "status"]
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                failureThreshold: 3
+              readinessProbe:
+                exec:
+                  command: ["ray", "status"]
+                initialDelaySeconds: 10
+                periodSeconds: 5
+                failureThreshold: 3
+              volumeMounts:
+                - name: dshm
+                  mountPath: /dev/shm
+                - name: ray-logs
+                  mountPath: /tmp/ray
+                - name: data-volume
+                  mountPath: /data
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 16Gi
+            - name: ray-logs
+              emptyDir: {}
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: ray-data-pvc
+
+    # GPU Worker Group (optional - uncomment if needed)
+    # - groupName: gpu-worker
+    #   replicas: 0
+    #   minReplicas: 0
+    #   maxReplicas: 10
+    #   rayStartParams:
+    #     block: "true"
+    #     num-gpus: "1"
+    #   template:
+    #     metadata:
+    #       labels:
+    #         ray.io/node-type: gpu-worker
+    #     spec:
+    #       nodeSelector:
+    #         nvidia.com/gpu.present: "true"
+    #       tolerations:
+    #         - key: nvidia.com/gpu
+    #           operator: Exists
+    #           effect: NoSchedule
+    #       containers:
+    #         - name: ray-worker
+    #           image: rayproject/ray-ml:2.9.3-py310-gpu
+    #           resources:
+    #             limits:
+    #               cpu: "8"
+    #               memory: "32Gi"
+    #               nvidia.com/gpu: "1"
+    #             requests:
+    #               cpu: "4"
+    #               memory: "16Gi"
+    #               nvidia.com/gpu: "1"
+
+---
+# ServiceAccount for Ray pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ray-cluster-sa
+  namespace: test
+  labels:
+    app.kubernetes.io/name: ray-cluster
+
+---
+# ConfigMap for non-sensitive environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ray-config
+  namespace: test
+data:
+  env1: "value1"
+  env2: "value2"
+  RAY_memory_monitor_refresh_ms: "0"
+
+---
+# Secret for sensitive environment variables (base64 encoded)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ray-secrets
+  namespace: test
+type: Opaque
+data: {}
+  # Add secrets as base64: echo -n 'value' | base64
+  # API_KEY: YXBpLWtleS12YWx1ZQ==
+
+---
+# Headless service for worker discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: ray-test-head-svc
+  namespace: test
+  labels:
+    app.kubernetes.io/name: ray-cluster
+spec:
+  type: ClusterIP
+  selector:
+    ray.io/node-type: head
+    ray.io/cluster: ray-test
+  ports:
+    - name: gcs
+      port: 6379
+      targetPort: 6379
+    - name: client
+      port: 10001
+      targetPort: 10001
+    - name: dashboard
+      port: 8265
+      targetPort: 8265
+    - name: serve
+      port: 8000
+      targetPort: 8000
+
+---
+# PVC for worker data (adjust storage class as needed)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ray-data-pvc
+  namespace: test
+spec:
+  accessModes:
+    - ReadWriteMany  # or ReadWriteOnce depending on storage
+  storageClassName: standard  # Update to your storage class
+  resources:
+    requests:
+      storage: 100Gi
