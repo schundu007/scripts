@@ -14,11 +14,11 @@ Production-ready DevOps automation scripts for cloud infrastructure, Kubernetes,
 
 | Script | Description |
 |--------|-------------|
-| [ubuntu-dev-setup.sh](#1-ubuntu-dev-environment-setup) | Ubuntu DevOps toolchain setup |
+| [ubuntu-dev-setup.sh](#1-ubuntu-dev-environment-setup) | Ubuntu DevOps toolchain setup  |
 | [raycluster.yaml](#2-raycluster-kubernetes-manifest) | KubeRay cluster for ML workloads |
-| [azure-aks-elasticsearch.sh](#3-azure-aks-elasticsearch) | Elasticsearch on Azure AKS |
-| [aws-eks-elasticsearch.sh](#4-aws-eks-elasticsearch) | Elasticsearch on AWS EKS |
-| [azure-devops-infra-pipeline.sh](#5-azure-devops-pipeline) | Azure DevOps CI/CD setup |
+| [azure-aks-elasticsearch.sh](#3-azure-aks-elasticsearch) | Elasticsearch on Azure AKS   |
+| [aws-eks-elasticsearch.sh](#4-aws-eks-elasticsearch) | Elasticsearch on AWS EKS         |
+| [azure-devops-infra-pipeline.sh](#5-azure-devops-pipeline) | Azure DevOps CI/CD setup   |
 
 ---
 
@@ -46,9 +46,9 @@ Installs DevOps tools: Terraform, Go, Docker, kubectl, Helm, AWS CLI, Azure CLI.
 ```
 ┌────────────────────────────────────┐
 │           RayCluster               │
-│  ┌──────┐  ┌──────┐  ┌──────┐     │
-│  │ Head │──│Worker│──│Worker│     │
-│  └──────┘  └──────┘  └──────┘     │
+│  ┌──────┐  ┌──────┐  ┌──────┐      │
+│  │ Head │──│Worker│──│Worker│      │
+│  └──────┘  └──────┘  └──────┘      │
 └────────────────────────────────────┘
 ```
 
@@ -67,7 +67,7 @@ kubectl port-forward svc/raycluster-complete-head-svc 8265:8265
 
 ```
 ┌─────────────────────────────────┐
-│  AKS ──► ES Cluster (3 nodes)  │
+│  AKS ──► ES Cluster (3 nodes)   │
 │          ↓                      │
 │    Ingress + TLS + DNS          │
 └─────────────────────────────────┘
@@ -88,7 +88,7 @@ export AZURE_SUBSCRIPTION_ID="your-sub-id"
 
 ```
 ┌─────────────────────────────────┐
-│  EKS ──► ES Cluster (3 nodes)  │
+│  EKS ──► ES Cluster (3 nodes)   │
 │          ↓                      │
 │    NLB + Ingress + TLS          │
 └─────────────────────────────────┘
@@ -129,14 +129,14 @@ export ADO_PAT="your-pat-token"
 
 ## Version Matrix
 
-| Component | Version |
-|-----------|---------|
-| Kubernetes | 1.32 |
+| Component | Version    |
+|-----------|---------   |
+| Kubernetes | 1.32      |
 | Elasticsearch | 8.17.0 |
 | cert-manager | v1.17.2 |
 | ingress-nginx | 4.14.1 |
-| Ray | 2.9.3 |
-| Terraform | 1.7.5+ |
+| Ray | 2.9.3            |
+| Terraform | 1.7.5+     |
 
 ---
 
